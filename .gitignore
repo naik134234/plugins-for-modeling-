@@ -1,0 +1,55 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environment
+venv/
+env/
+ENV/
+
+# Environment Variables
+.env
+.env.local
+config/.env
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Project specific
+logs/
+test_output.txt
+mc_test_output.txt
+api_test_output.txt
+api_test_output_2.txt
+celerybeat-schedule
+coverage.xml
+htmlcov/
+.pytest_cache/
+.coverage
+
+# Node (Excel Add-in)
+node_modules/
+excel-addin/dist/
+excel-addin/.office-addin-dev-certs/

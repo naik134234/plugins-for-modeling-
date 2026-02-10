@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <base target="_top">
+    <link rel="stylesheet" href="https://ssl.gstatic.com/docs/script/css/add-ons1.css">
+    <style>
+        .branding-below {
+            bottom: 56px;
+            top: 0;
+        }
+
+        .block {
+            padding: 10px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="sidebar branding-below">
+        <div class="block">
+            <h3>Value at Risk (VaR)</h3>
+            <p>Select a range of returns in the sheet.</p>
+
+            <div class="form-group">
+                <label for="portfolioValue">Portfolio Value</label>
+                <input type="number" id="portfolioValue" value="1000000" style="width: 100%;">
+            </div>
+
+            <div class="form-group">
+                <label for="method">Method</label>
+                <select id="method" style="width: 100%;">
+                    <option value="historical">Historical</option>
+                    <option value="parametric">Parametric</option>
+                    <option value="monte_carlo">Monte Carlo</option>
+                </select>
+            </div>
+
+            <button class="action" id="calculate-btn">Calculate VaR</button>
+        </div>
+
+        <div class="block" id="results" style="display:none;">
+            <h4>Results</h4>
+            <div id="result-content"></div>
+        </div>
+
+        <div class="block error" id="error" style="display:none; color: red;"></div>
+    </div>
+
+    <script>
+        document.getElementById('calculate-btn').addEventListener('click', runCalculation);
+
+        function runCalculation() {
+            var btn = document.getElementById('calculate-btn');
+            var errorDiv = document.getElementById('error');
+            var resultsDiv = document.getElementById('results');
+
+            btn.disabled = true;
+            btn.textContent = 'Calculating...';
+            errorDiv.style.display = 'none';
+            resultsDiv.style.display = 'none';
+
+            // 1. Get selected data from sheet
+            google.script.run
+                .withSuccessHandler(function (returns) {
+                    if (returns.length < 10) {
+                        showError('Please select at least 10 return values.');
+                        btn.disabled = false;
+                        btn.textContent = 'Calculate VaR';
+                        return;
+                    }
+
+                    // 2. Prepare params
+                    var params = {
+                        portfolio_value: parseFloat(document.getElementById('portfolioValue').value),
+                        confidence_level: 0.95,
+                        time_horizon: 1,
+                        method: document.getElementById('method').value,
+                        returns: returns
+                    };
+
+                    // 3. Call backend API (via server-side script)
+                    google.script.run
+                        .withSuccessHandler(function (result) {
+                            showResults(result);
+                            btn.disabled = false;
+                            btn.textContent = 'Calculate VaR';
+                        })
+                        .withFailureHandler(function (err) {
+                            showError(err.message);
+                            btn.disabled = false;
+                            btn.textContent = 'Calculate VaR';
+                        })
+                        .calculateVaR(params);
+
+                })
+                .withFailureHandler(function (err) {
+                    showError('Failed to get selection: ' + err.message);
+                    btn.disabled = false;
+                    btn.textContent = 'Calculate VaR';
+                })
+                .getSelectedData();
+        }
+
+        function showResults(data) {
+            var div = document.getElementById('result-content');
+            div.innerHTML = `
+          <p><strong>VaR:</strong> $${data.var_absolute.toLocaleString()}</p>
+          <p><strong>VaR %:</strong> ${data.var_percentage}%</p>
+          <p><strong>Method:</strong> ${data.var_method}</p>
+        `;
+            document.getElementById('results').style.display = 'block';
+        }
+
+        function showError(msg) {
+            var div = document.getElementById('error');
+            div.textContent = msg;
+            div.style.display = 'block';
+        }
+    </script>
+</body>
+
+</html>
