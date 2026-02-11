@@ -20,8 +20,12 @@ import { COMPANIES, CompanyData } from "../data/financial-data";
 import { getConnectionStatus, onStatusChange, startHealthCheck, ConnectionStatus } from "../services/api";
 
 // Excel
-// ExcelService will be used for export features
-// import { ExcelService } from "../utils/excel";
+import { ExcelService } from "../utils/excel";
+
+// Helper to write to Excel, silently catch if not in Office context
+const writeToExcel = async (fn: () => Promise<void>) => {
+    try { await fn(); } catch (e) { console.log("Excel write skipped (not in Office):", e); }
+};
 
 // ──────── Types ──────── 
 type TabId = "dashboard" | "var" | "credit" | "mc" | "sens" | "capbudget" | "dcf" | "options" | "bonds" | "portfolio";
@@ -150,7 +154,7 @@ const App: React.FC = () => {
         const [horizon, setHorizon] = useState("1");
         const [result, setResult] = useState<VaRResult | null>(null);
 
-        const calc = () => {
+        const calc = async () => {
             clearError();
             try {
                 setLoading(true);
@@ -163,6 +167,27 @@ const App: React.FC = () => {
                     numSimulations: 10000,
                 });
                 setResult(r);
+                await writeToExcel(async () => {
+                    await ExcelService.writeResultsToSheet("VaR", `📉 Value at Risk — ${selectedCompany.ticker}`, `${r.varMethod} | ${r.confidenceLevel} confidence | ${r.timeHorizonDays}-day horizon`,
+                        [{
+                            heading: "VaR Results", rows: [
+                                ["Method", r.varMethod], ["Confidence Level", r.confidenceLevel],
+                                ["VaR (Absolute $)", r.varAbsolute], ["VaR (%)", r.varPercentage],
+                                ["Expected Shortfall (CVaR)", r.expectedShortfall], ["Time Horizon (days)", r.timeHorizonDays],
+                                ["Data Points Used", r.dataPointsUsed],
+                                ...(r.dailyVolatility !== undefined ? [["Daily Volatility (%)", r.dailyVolatility] as [string, number]] : []),
+                                ...(r.annualizedVolatility !== undefined ? [["Annualized Volatility (%)", r.annualizedVolatility] as [string, number]] : []),
+                            ]
+                        }],
+                        undefined,
+                        [{ label: "Portfolio at Risk ($)", formula: `=${r.varPercentage}/100*${portValue}` },
+                        { label: "Loss if CVaR Event ($)", formula: `=${r.expectedShortfall}` }]
+                    );
+                    await ExcelService.writeInputData("VaR", 4, [
+                        ["Company", selectedCompany.ticker], ["Portfolio Value", parseFloat(portValue)],
+                        ["Confidence", parseFloat(conf)], ["Horizon (days)", parseInt(horizon)], ["Method", method],
+                    ]);
+                });
             } catch (e) { handleError(e); } finally { setLoading(false); }
         };
 
@@ -217,11 +242,31 @@ const App: React.FC = () => {
 
         const populate = (c: CompanyData) => { setAssetV(String(c.totalAssets)); setDebtV(String(c.debtFaceValue)); setVol(String(c.assetVolatility)); };
 
-        const calc = () => {
+        const calc = async () => {
             clearError();
             try {
                 setLoading(true);
-                setResult(calculateMerton({ assetValue: parseFloat(assetV), debtFaceValue: parseFloat(debtV), riskFreeRate: parseFloat(rf), volatility: parseFloat(vol), timeToMaturity: parseFloat(mat) }));
+                const r = calculateMerton({ assetValue: parseFloat(assetV), debtFaceValue: parseFloat(debtV), riskFreeRate: parseFloat(rf), volatility: parseFloat(vol), timeToMaturity: parseFloat(mat) });
+                setResult(r);
+                await writeToExcel(async () => {
+                    await ExcelService.writeResultsToSheet("Credit Risk", `🏛️ Merton Credit Model — ${selectedCompany.ticker}`, "Structural model: probability of default & distance to default",
+                        [{
+                            heading: "Credit Risk Results", rows: [
+                                ["Probability of Default", `${(r.probabilityOfDefault * 100).toFixed(4)}%`],
+                                ["Distance to Default (DD)", r.distanceToDefault],
+                                ["Equity Value", r.equityValue], ["Debt Value", r.debtValue],
+                                ["Credit Spread (bps)", Math.round(r.impliedCreditSpread * 10000)],
+                                ["d1", r.d1], ["d2", r.d2],
+                            ]
+                        }],
+                        undefined,
+                        [{ label: "PD × Debt = Expected Loss", formula: `=${(r.probabilityOfDefault).toFixed(6)}*${debtV}` }]
+                    );
+                    await ExcelService.writeInputData("Credit Risk", 4, [
+                        ["Asset Value", parseFloat(assetV)], ["Debt Face Value", parseFloat(debtV)],
+                        ["Risk-Free Rate", parseFloat(rf)], ["Volatility", parseFloat(vol)], ["Maturity", parseFloat(mat)],
+                    ]);
+                });
             } catch (e) { handleError(e); } finally { setLoading(false); }
         };
 
@@ -270,12 +315,26 @@ const App: React.FC = () => {
         const [modeV, setModeV] = useState("100");
         const [result, setResult] = useState<MCResult | null>(null);
 
-        const calc = () => {
+        const calc = async () => {
             clearError();
             try {
                 setLoading(true);
                 const param: SimulationParameter = { name: "X", distribution: dist, mean: parseFloat(mean), stdDev: parseFloat(std), minVal: parseFloat(minV), maxVal: parseFloat(maxV), modeVal: parseFloat(modeV) };
-                setResult(runMonteCarlo({ numSimulations: parseInt(numSim), parameters: [param] }));
+                const r = runMonteCarlo({ numSimulations: parseInt(numSim), parameters: [param] });
+                setResult(r);
+                await writeToExcel(async () => {
+                    await ExcelService.writeResultsToSheet("Monte Carlo", `🎲 Monte Carlo — ${dist} distribution`, `${r.stats.numSimulations} simulations`,
+                        [{
+                            heading: "Statistics", rows: [
+                                ["Mean", r.stats.mean], ["Std Dev", r.stats.stdDev], ["Median", r.stats.median],
+                                ["Min", r.stats.minimum], ["Max", r.stats.maximum], ["Range", r.stats.range],
+                                ["P5", r.stats.percentile5], ["P95", r.stats.percentile95],
+                                ["CV (%)", r.stats.coefficientOfVariation], ["P(Negative) %", r.stats.probNegative],
+                            ]
+                        }],
+                        { headers: ["Bin", "Frequency"], rows: r.histogram.bins.map((b, i) => [b, r.histogram.frequencies[i]]) }
+                    );
+                });
             } catch (e) { handleError(e); } finally { setLoading(false); }
         };
 
@@ -335,7 +394,7 @@ const App: React.FC = () => {
         const [steps, setSteps] = useState("10");
         const [result, setResult] = useState<SensitivityResult | null>(null);
 
-        const calc = () => {
+        const calc = async () => {
             clearError();
             try {
                 setLoading(true);
@@ -350,7 +409,14 @@ const App: React.FC = () => {
                     const r = calculateMerton({ assetValue: inputs.asset_value, debtFaceValue: inputs.debt_face_value, riskFreeRate: inputs.risk_free_rate, volatility: inputs.volatility, timeToMaturity: inputs.time_to_maturity });
                     return r.probabilityOfDefault;
                 };
-                setResult(runSensitivity({ baseInputs, targetParameter: param, minValue: parseFloat(minV), maxValue: parseFloat(maxV), steps: parseInt(steps), modelFunction: model }));
+                const r = runSensitivity({ baseInputs, targetParameter: param, minValue: parseFloat(minV), maxValue: parseFloat(maxV), steps: parseInt(steps), modelFunction: model });
+                setResult(r);
+                await writeToExcel(async () => {
+                    await ExcelService.writeResultsToSheet("Sensitivity", `📈 Sensitivity — ${param} (${selectedCompany.ticker})`, `Elasticity: ${r.elasticity}`,
+                        [{ heading: "Analysis", rows: [["Parameter", r.parameter], ["Elasticity", r.elasticity], ["Base Output", r.baseOutput]] }],
+                        { headers: ["Input Value", "Output (PD)"], rows: r.values.map((v, i) => [v, r.outputs[i]]) }
+                    );
+                });
             } catch (e) { handleError(e); } finally { setLoading(false); }
         };
 
@@ -412,19 +478,47 @@ const App: React.FC = () => {
         const [loanT, setLoanT] = useState("240");
         const [loanResult, setLoanResult] = useState<LoanResult | null>(null);
 
-        const calcCB = () => {
+        const calcCB = async () => {
             clearError();
             try {
                 setLoading(true);
                 const cashFlows = cfs.split(",").map(s => parseFloat(s.trim()));
-                setResult(calculateCapitalBudgeting({ cashFlows, discountRate: parseFloat(rate) }));
+                const r = calculateCapitalBudgeting({ cashFlows, discountRate: parseFloat(rate) });
+                setResult(r);
+                await writeToExcel(async () => {
+                    await ExcelService.writeResultsToSheet("CapBudget", "💰 Capital Budgeting Analysis", "NPV, IRR, Payback, Profitability Index",
+                        [{
+                            heading: "Key Metrics", rows: [
+                                ["NPV ($)", r.npv], ["IRR (%)", r.irr !== null ? r.irr * 100 : "N/A"],
+                                ["Payback Period (yrs)", r.paybackPeriod ?? "N/A"],
+                                ["Disc. Payback (yrs)", r.discountedPaybackPeriod ?? "N/A"],
+                                ["Profitability Index", r.profitabilityIndex],
+                            ]
+                        }],
+                        { headers: ["Period", "Cash Flow", "PV Cash Flow", "Cumulative PV"], rows: r.cashFlowSummary.map(cf => [cf.period, cf.cashFlow, cf.pvCashFlow, cf.cumulative]) },
+                        [{ label: "NPV Check (sum of PV CFs)", formula: `=SUM(C${r.cashFlowSummary.length > 0 ? 1 : 0})` }]
+                    );
+                });
             } catch (e) { handleError(e); } finally { setLoading(false); }
         };
 
-        const calcLoan = () => {
+        const calcLoan = async () => {
             clearError();
             try {
-                setLoanResult(calculateLoan({ principal: parseFloat(loanP), annualRate: parseFloat(loanR), termMonths: parseInt(loanT) }));
+                const r = calculateLoan({ principal: parseFloat(loanP), annualRate: parseFloat(loanR), termMonths: parseInt(loanT) });
+                setLoanResult(r);
+                await writeToExcel(async () => {
+                    const schedRows = r.schedule.filter((_, i) => i % 12 === 0 || i === r.schedule.length - 1).map(s => [s.month, s.payment, s.principal, s.interest, s.balance]);
+                    await ExcelService.writeResultsToSheet("Loan", "🏠 Loan Amortization", `Principal: $${loanP} | Rate: ${(parseFloat(loanR) * 100).toFixed(1)}% | ${loanT} months`,
+                        [{
+                            heading: "Summary", rows: [
+                                ["Monthly EMI", r.monthlyPayment], ["Total Interest", r.totalInterest],
+                                ["Total Payment", r.totalPayment], ["Effective Rate (%)", r.effectiveRate * 100],
+                            ]
+                        }],
+                        { headers: ["Month", "Payment", "Principal", "Interest", "Balance"], rows: schedRows }
+                    );
+                });
             } catch (e) { handleError(e); }
         };
 
@@ -494,25 +588,55 @@ const App: React.FC = () => {
 
         const populate = (c: CompanyData) => { setFcf(String(c.freeCashFlow)); setDebt(String(c.longTermDebt)); setShares(String(c.sharesOutstanding)); };
 
-        const calcDCF = () => {
+        const calcDCF = async () => {
             clearError();
             try {
                 setLoading(true);
-                setResult(calculateDCF({
+                const r = calculateDCF({
                     currentFCF: parseFloat(fcf), growthRates: selectedCompany.fcfGrowthRates,
                     terminalGrowthRate: parseFloat(tgr), wacc: parseFloat(wacc),
                     netDebt: parseFloat(debt), sharesOutstanding: parseFloat(shares), exitMultiple: 15
-                }));
+                });
+                setResult(r);
+                await writeToExcel(async () => {
+                    await ExcelService.writeResultsToSheet("DCF", `🏦 DCF Valuation — ${selectedCompany.ticker}`, "Discounted Cash Flow intrinsic value",
+                        [{
+                            heading: "Valuation Summary", rows: [
+                                ["EV (Gordon Growth)", r.enterpriseValueGordon], ["EV (Exit Multiple)", r.enterpriseValueExit ?? "N/A"],
+                                ["Equity Value ($B)", r.equityValueGordon], ["Implied Share Price ($)", r.impliedSharePriceGordon],
+                                ["PV of FCFs ($B)", r.sumPVFCFs], ["PV Terminal ($B)", r.pvTerminalGordon],
+                            ]
+                        }],
+                        { headers: ["Year", "FCF ($B)", "PV FCF ($B)"], rows: r.projectedFCFs.map(f => [f.year, f.fcf, f.pvFCF]) },
+                        [{ label: "Upside/Downside vs Market", formula: `=${r.impliedSharePriceGordon}-${selectedCompany.currentPrice}` }]
+                    );
+                    await ExcelService.writeInputData("DCF", 4, [
+                        ["Current FCF ($B)", parseFloat(fcf)], ["Terminal Growth", parseFloat(tgr)],
+                        ["WACC", parseFloat(wacc)], ["Net Debt ($B)", parseFloat(debt)], ["Shares (M)", parseFloat(shares)],
+                    ]);
+                });
             } catch (e) { handleError(e); } finally { setLoading(false); }
         };
 
-        const calcWACC = () => {
+        const calcWACC = async () => {
             try {
-                setWaccResult(calculateWACC({
+                const r = calculateWACC({
                     riskFreeRate: 0.04, marketReturn: 0.10, beta: selectedCompany.beta,
                     equityMarketValue: selectedCompany.marketCap, debtMarketValue: selectedCompany.longTermDebt,
                     costOfDebt: 0.05, taxRate: 0.25,
-                }));
+                });
+                setWaccResult(r);
+                await writeToExcel(async () => {
+                    await ExcelService.writeResultsToSheet("WACC", `⚖️ WACC — ${selectedCompany.ticker}`, "Weighted Average Cost of Capital",
+                        [{
+                            heading: "Results", rows: [
+                                ["WACC (%)", r.wacc * 100], ["Cost of Equity (%)", r.costOfEquity * 100],
+                                ["After-Tax Cost of Debt (%)", r.afterTaxCostOfDebt * 100],
+                                ["Equity Weight (%)", r.weightEquity * 100], ["Debt Weight (%)", r.weightDebt * 100],
+                            ]
+                        }]
+                    );
+                });
             } catch (e) { handleError(e); }
         };
 
@@ -585,11 +709,37 @@ const App: React.FC = () => {
 
         const populate = (c: CompanyData) => { setSpot(String(c.currentPrice)); setStrike(String(Math.round(c.currentPrice * 1.05))); setVol(String(c.annualVolatility.toFixed(2))); };
 
-        const calc = () => {
+        const calc = async () => {
             clearError();
             try {
                 setLoading(true);
-                setResult(calculateBlackScholes({ spotPrice: parseFloat(spot), strikePrice: parseFloat(strike), timeToExpiry: parseFloat(expiry), riskFreeRate: parseFloat(rf), volatility: parseFloat(vol), optionType: optType }));
+                const r = calculateBlackScholes({ spotPrice: parseFloat(spot), strikePrice: parseFloat(strike), timeToExpiry: parseFloat(expiry), riskFreeRate: parseFloat(rf), volatility: parseFloat(vol), optionType: optType });
+                setResult(r);
+                await writeToExcel(async () => {
+                    await ExcelService.writeResultsToSheet("Options", `⚡ Black-Scholes ${optType.toUpperCase()} — ${selectedCompany.ticker}`, `S=${spot} K=${strike} T=${expiry} σ=${vol}`,
+                        [{
+                            heading: "Pricing", rows: [
+                                ["Option Price ($)", r.price], ["Intrinsic Value ($)", r.intrinsicValue], ["Time Value ($)", r.timeValue],
+                                ["d1", r.d1], ["d2", r.d2],
+                            ]
+                        }, {
+                            heading: "Greeks", rows: [
+                                ["Δ Delta", r.delta], ["Γ Gamma", r.gamma], ["Θ Theta", r.theta],
+                                ["ν Vega", r.vega], ["ρ Rho", r.rho],
+                            ]
+                        }, {
+                            heading: "Put-Call Parity", rows: [
+                                ["Call Price", r.putCallParity.callPrice], ["Put Price", r.putCallParity.putPrice],
+                            ]
+                        }],
+                        undefined,
+                        [{ label: "P&L if spot +5%", formula: `=MAX(${parseFloat(spot) * 1.05}-${strike},0)-${r.price}` }]
+                    );
+                    await ExcelService.writeInputData("Options", 4, [
+                        ["Spot", parseFloat(spot)], ["Strike", parseFloat(strike)], ["Expiry", parseFloat(expiry)],
+                        ["Risk-Free", parseFloat(rf)], ["Volatility", parseFloat(vol)], ["Type", optType],
+                    ]);
+                });
             } catch (e) { handleError(e); } finally { setLoading(false); }
         };
 
@@ -648,11 +798,27 @@ const App: React.FC = () => {
         const [freq, setFreq] = useState("2");
         const [result, setResult] = useState<BondResult | null>(null);
 
-        const calc = () => {
+        const calc = async () => {
             clearError();
             try {
                 setLoading(true);
-                setResult(calculateBond({ faceValue: parseFloat(face), couponRate: parseFloat(coupon), yearsToMaturity: parseInt(years), marketRate: parseFloat(mktRate), paymentFrequency: parseInt(freq) }));
+                const r = calculateBond({ faceValue: parseFloat(face), couponRate: parseFloat(coupon), yearsToMaturity: parseInt(years), marketRate: parseFloat(mktRate), paymentFrequency: parseInt(freq) });
+                setResult(r);
+                await writeToExcel(async () => {
+                    await ExcelService.writeResultsToSheet("Bonds", `📜 Bond Valuation`, `Face=$${face} | Coupon=${(parseFloat(coupon) * 100).toFixed(1)}% | ${years}Y | ${r.premiumDiscount}`,
+                        [{
+                            heading: "Bond Analysis", rows: [
+                                ["Bond Price ($)", r.bondPrice], ["YTM (%)", r.ytm * 100], ["Current Yield (%)", r.currentYield * 100],
+                                ["Macaulay Duration (yrs)", r.macaulayDuration], ["Modified Duration", r.modifiedDuration],
+                                ["Convexity", r.convexity],
+                                ["Premium/Discount", r.premiumDiscount],
+                            ]
+                        }],
+                        undefined,
+                        [{ label: "Price Change for +1% yield", formula: `=-${r.modifiedDuration}*${r.bondPrice}/100` },
+                        { label: "Convexity Adjustment", formula: `=0.5*${r.convexity}*${r.bondPrice}*0.01^2` }]
+                    );
+                });
             } catch (e) { handleError(e); } finally { setLoading(false); }
         };
 
@@ -701,7 +867,7 @@ const App: React.FC = () => {
         const [result, setResult] = useState<PortfolioResult | null>(null);
         const [ratiosResult, setRatiosResult] = useState<RatiosResult | null>(null);
 
-        const calc = () => {
+        const calc = async () => {
             clearError();
             try {
                 setLoading(true);
@@ -709,26 +875,71 @@ const App: React.FC = () => {
                 if (selected.length < 2) throw new Error("Select at least 2 assets");
 
                 const portAssets = selected.map(c => ({ name: c.ticker, expectedReturn: c.annualReturn, volatility: c.annualVolatility }));
-
-                // Build correlation matrix (simplified: use 0.3 for cross, 1 for diagonal)
                 const n = selected.length;
                 const corr = Array.from({ length: n }, (_, i) => Array.from({ length: n }, (_, j) => i === j ? 1 : 0.3));
 
-                setResult(optimizePortfolio({ assets: portAssets, correlationMatrix: corr, riskFreeRate: parseFloat(rf) }));
+                const r = optimizePortfolio({ assets: portAssets, correlationMatrix: corr, riskFreeRate: parseFloat(rf) });
+                setResult(r);
+                await writeToExcel(async () => {
+                    await ExcelService.writeResultsToSheet("Portfolio", `🎯 Portfolio Optimization`, `Markowitz Mean-Variance | ${n} assets`,
+                        [{
+                            heading: "Max Sharpe Portfolio", rows: [
+                                ["Expected Return (%)", r.maxSharpePortfolio.expectedReturn * 100],
+                                ["Volatility (%)", r.maxSharpePortfolio.volatility * 100],
+                                ["Sharpe Ratio", r.maxSharpePortfolio.sharpeRatio],
+                                ...r.maxSharpePortfolio.weights.map(w => [`Weight: ${w.asset}`, `${(w.weight * 100).toFixed(1)}%`] as [string, string]),
+                            ]
+                        }, {
+                            heading: "Min Variance Portfolio", rows: [
+                                ["Expected Return (%)", r.minVariancePortfolio.expectedReturn * 100],
+                                ["Volatility (%)", r.minVariancePortfolio.volatility * 100],
+                                ["Sharpe Ratio", r.minVariancePortfolio.sharpeRatio],
+                                ...r.minVariancePortfolio.weights.map(w => [`Weight: ${w.asset}`, `${(w.weight * 100).toFixed(1)}%`] as [string, string]),
+                            ]
+                        }],
+                        { headers: ["Return (%)", "Volatility (%)", "Sharpe"], rows: r.efficientFrontier.map(p => [p.ret * 100, p.risk * 100, ((p.ret - parseFloat(rf)) / p.risk).toFixed(4)]) }
+                    );
+                });
             } catch (e) { handleError(e); } finally { setLoading(false); }
         };
 
-        const calcRatios = () => {
+        const calcRatios = async () => {
             try {
                 const c = selectedCompany;
-                setRatiosResult(calculateRatios({
+                const r = calculateRatios({
                     currentAssets: c.currentAssets, inventory: c.inventory, cashAndEquivalents: c.cashAndEquivalents,
                     totalAssets: c.totalAssets, currentLiabilities: c.currentLiabilities, totalLiabilities: c.totalLiabilities,
                     totalEquity: c.totalEquity, longTermDebt: c.longTermDebt, revenue: c.revenue, costOfGoodsSold: c.costOfGoodsSold,
                     operatingIncome: c.operatingIncome, netIncome: c.netIncome, interestExpense: c.interestExpense,
                     ebitda: c.ebitda, taxExpense: c.taxExpense, totalReceivables: c.totalReceivables, totalPayables: c.totalPayables,
                     dividendsPaid: c.dividendsPaid, sharesOutstanding: c.sharesOutstanding, marketPrice: c.currentPrice,
-                }));
+                });
+                setRatiosResult(r);
+                await writeToExcel(async () => {
+                    await ExcelService.writeResultsToSheet("Ratios", `📋 Financial Ratios — ${c.ticker}`, "Comprehensive ratio analysis",
+                        [{
+                            heading: "Liquidity", rows: [
+                                ["Current Ratio", r.liquidity.currentRatio], ["Quick Ratio", r.liquidity.quickRatio], ["Cash Ratio", r.liquidity.cashRatio],
+                            ]
+                        }, {
+                            heading: "Profitability", rows: [
+                                ["ROE (%)", r.profitability.roe * 100], ["ROA (%)", r.profitability.roa * 100],
+                                ["Net Margin (%)", r.profitability.netMargin * 100], ["Gross Margin (%)", r.profitability.grossMargin * 100],
+                                ["Operating Margin (%)", r.profitability.operatingMargin * 100],
+                            ]
+                        }, {
+                            heading: "Leverage", rows: [
+                                ["Debt/Equity", r.leverage.debtToEquity], ["Debt/Assets", r.leverage.debtToAssets],
+                                ["Interest Coverage", r.leverage.interestCoverage], ["Equity Multiplier", r.leverage.equityMultiplier],
+                            ]
+                        }, {
+                            heading: "DuPont Analysis", rows: [
+                                ["ROE (DuPont) (%)", r.dupont.roe * 100], ["Net Margin (%)", r.dupont.netMargin * 100],
+                                ["Asset Turnover", r.dupont.assetTurnover], ["Equity Multiplier", r.dupont.equityMultiplier],
+                            ]
+                        }]
+                    );
+                });
             } catch (e) { handleError(e); }
         };
 
