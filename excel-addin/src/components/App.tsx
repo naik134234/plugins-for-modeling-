@@ -16,8 +16,10 @@ import { calculateRatios, RatiosResult } from "../engines/ratios-engine";
 import { calculateLoan, LoanResult } from "../engines/loan-engine";
 
 // Data
-import { COMPANIES, CompanyData } from "../data/financial-data";
+import { COMPANIES, CompanyData, refreshCompanyLive, refreshAllLive, addCustomTicker } from "../data/financial-data";
 import { getConnectionStatus, onStatusChange, startHealthCheck, ConnectionStatus } from "../services/api";
+import { searchTickers, searchLocal, SearchResult } from "../services/stock-screener";
+import { DataSource, clearAllCache } from "../services/market-data-service";
 
 // Excel
 import { ExcelService } from "../utils/excel";
@@ -56,34 +58,181 @@ const App: React.FC = () => {
     const [error, setError] = useState("");
     const [connStatus, setConnStatus] = useState<ConnectionStatus>("offline");
 
+    // Live data state
+    const [dataSource, setDataSource] = useState<DataSource>("fallback");
+    const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+    const [refreshing, setRefreshing] = useState(false);
+    const [refreshProgress, setRefreshProgress] = useState<string>("");
+    const [searchQuery, setSearchQuery] = useState("");
+    const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+    const [showSearch, setShowSearch] = useState(false);
+    const [, forceUpdate] = useState(0);
+
     useEffect(() => {
         try { Office.onReady(() => { }); } catch { /* not in Office */ }
-        // Start health check to detect backend
         startHealthCheck();
         setConnStatus(getConnectionStatus());
         const unsub = onStatusChange(s => setConnStatus(s));
         return unsub;
     }, []);
 
+    // Auto-refresh selected company on mount
+    useEffect(() => {
+        refreshCompanyLive(company).then(r => {
+            setDataSource(r.source);
+            setLastUpdated(r.lastUpdated);
+            forceUpdate(n => n + 1);
+        }).catch(() => { });
+    }, []);
+
     const selectedCompany = COMPANIES.find(c => c.ticker === company) || COMPANIES[0];
+
+    // Refresh single company
+    const handleRefreshOne = async () => {
+        setRefreshing(true);
+        setRefreshProgress(`Refreshing ${company}...`);
+        try {
+            const r = await refreshCompanyLive(company);
+            setDataSource(r.source);
+            setLastUpdated(r.lastUpdated);
+            forceUpdate(n => n + 1);
+            setRefreshProgress(r.source === "live" ? "✅ Live data loaded" : "📦 Using cached/fallback");
+        } catch {
+            setRefreshProgress("❌ Refresh failed");
+        }
+        setRefreshing(false);
+        setTimeout(() => setRefreshProgress(""), 3000);
+    };
+
+    // Refresh all companies
+    const handleRefreshAll = async () => {
+        setRefreshing(true);
+        try {
+            await refreshAllLive((done, total) => {
+                setRefreshProgress(`Refreshing ${done}/${total}...`);
+            });
+            setRefreshProgress(`✅ All ${COMPANIES.length} companies updated`);
+            forceUpdate(n => n + 1);
+        } catch {
+            setRefreshProgress("❌ Batch refresh failed");
+        }
+        setRefreshing(false);
+        setTimeout(() => setRefreshProgress(""), 4000);
+    };
+
+    // Ticker search
+    const handleSearch = async (q: string) => {
+        setSearchQuery(q);
+        if (q.length < 1) { setSearchResults([]); return; }
+        // Try API first, fall back to local
+        const results = await searchTickers(q);
+        setSearchResults(results.length > 0 ? results : searchLocal(q));
+    };
+
+    const handleAddTicker = async (symbol: string, name: string, exchange: string) => {
+        setShowSearch(false);
+        setSearchQuery("");
+        setSearchResults([]);
+        setRefreshing(true);
+        setRefreshProgress(`Adding ${symbol}...`);
+        try {
+            const r = await addCustomTicker(symbol, name, exchange);
+            setCompany(symbol);
+            setDataSource(r.source);
+            setLastUpdated(r.lastUpdated);
+            forceUpdate(n => n + 1);
+            setRefreshProgress(`✅ ${symbol} added`);
+        } catch {
+            setRefreshProgress(`❌ Failed to add ${symbol}`);
+        }
+        setRefreshing(false);
+        setTimeout(() => setRefreshProgress(""), 3000);
+    };
 
     const clearError = () => setError("");
     const handleError = (e: unknown) => setError(e instanceof Error ? e.message : String(e));
 
-    // ═══ Company Selector ═══
+    // ═══ Company Selector with Search & Live Data ═══
     const CompanySelector = ({ onChange }: { onChange?: (c: CompanyData) => void }) => (
         <div className="company-selector">
             <div className="form-group">
-                <label className="form-label">Company</label>
-                <select className="form-select" value={company} onChange={e => {
-                    setCompany(e.target.value);
-                    const c = COMPANIES.find(x => x.ticker === e.target.value);
-                    if (c && onChange) onChange(c);
-                }}>
-                    {COMPANIES.map(c => (
-                        <option key={c.ticker} value={c.ticker}>{c.ticker} — {c.name}</option>
-                    ))}
-                </select>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                    <label className="form-label" style={{ margin: 0 }}>Company</label>
+                    <span style={{
+                        fontSize: 10, padding: "2px 6px", borderRadius: 8,
+                        background: dataSource === "live" ? "#00c853" : dataSource === "cached" ? "#ffc107" : "#78909c",
+                        color: dataSource === "live" ? "#fff" : "#000",
+                        fontWeight: 600, letterSpacing: 0.5,
+                    }}>
+                        {dataSource === "live" ? "● LIVE" : dataSource === "cached" ? "● CACHED" : "● OFFLINE"}
+                    </span>
+                    {lastUpdated && <span style={{ fontSize: 9, color: "#90a4ae" }}>{lastUpdated.toLocaleTimeString()}</span>}
+                </div>
+                <div style={{ display: "flex", gap: 4 }}>
+                    <select className="form-select" style={{ flex: 1 }} value={company} onChange={async e => {
+                        setCompany(e.target.value);
+                        const c = COMPANIES.find(x => x.ticker === e.target.value);
+                        if (c && onChange) onChange(c);
+                        // Auto-refresh when switching company
+                        try {
+                            const r = await refreshCompanyLive(e.target.value);
+                            setDataSource(r.source);
+                            setLastUpdated(r.lastUpdated);
+                            forceUpdate(n => n + 1);
+                        } catch { }
+                    }}>
+                        {COMPANIES.map(c => (
+                            <option key={c.ticker} value={c.ticker}>{c.ticker} — {c.name}</option>
+                        ))}
+                    </select>
+                    <button onClick={handleRefreshOne} disabled={refreshing} title="Refresh this company"
+                        style={{ padding: "4px 8px", background: "#1a237e", color: "#fff", border: "1px solid #3949ab", borderRadius: 6, cursor: "pointer", fontSize: 14 }}>
+                        🔄
+                    </button>
+                    <button onClick={() => setShowSearch(!showSearch)} title="Search & add ticker"
+                        style={{ padding: "4px 8px", background: "#1a237e", color: "#fff", border: "1px solid #3949ab", borderRadius: 6, cursor: "pointer", fontSize: 14 }}>
+                        🔍
+                    </button>
+                </div>
+                {showSearch && (
+                    <div style={{ marginTop: 6 }}>
+                        <input
+                            className="form-input"
+                            placeholder="Search ticker or company name..."
+                            value={searchQuery}
+                            onChange={e => handleSearch(e.target.value)}
+                            style={{ marginBottom: 4, fontSize: 12 }}
+                        />
+                        {searchResults.length > 0 && (
+                            <div style={{ maxHeight: 140, overflowY: "auto", background: "#0d1117", borderRadius: 6, border: "1px solid #21262d" }}>
+                                {searchResults.map(r => (
+                                    <div key={r.symbol} onClick={() => handleAddTicker(r.symbol, r.name, r.exchange)}
+                                        style={{ padding: "6px 10px", cursor: "pointer", fontSize: 11, borderBottom: "1px solid #161b22", display: "flex", justifyContent: "space-between" }}
+                                        onMouseEnter={e => (e.currentTarget.style.background = "#161b22")}
+                                        onMouseLeave={e => (e.currentTarget.style.background = "transparent")}>
+                                        <span><strong>{r.symbol}</strong> {r.name}</span>
+                                        <span style={{ color: "#8b949e" }}>{r.exchange}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                )}
+                {refreshProgress && (
+                    <div style={{ marginTop: 4, fontSize: 11, color: "#64ffda", padding: "3px 6px", background: "rgba(100,255,218,0.08)", borderRadius: 4 }}>
+                        {refreshing && <span style={{ marginRight: 6 }}>⏳</span>}{refreshProgress}
+                    </div>
+                )}
+            </div>
+            <div style={{ display: "flex", gap: 4, marginTop: 6 }}>
+                <button onClick={handleRefreshAll} disabled={refreshing}
+                    style={{ flex: 1, padding: "5px 8px", background: "linear-gradient(135deg, #1a237e, #283593)", color: "#e8eaf6", border: "1px solid #3949ab", borderRadius: 6, cursor: "pointer", fontSize: 10, fontWeight: 600 }}>
+                    🔄 Refresh All ({COMPANIES.length})
+                </button>
+                <button onClick={() => { clearAllCache(); setRefreshProgress("Cache cleared"); setTimeout(() => setRefreshProgress(""), 2000); }}
+                    style={{ padding: "5px 8px", background: "#263238", color: "#b0bec5", border: "1px solid #37474f", borderRadius: 6, cursor: "pointer", fontSize: 10 }}>
+                    🗑️ Clear Cache
+                </button>
             </div>
         </div>
     );

@@ -177,3 +177,120 @@ export function getAllSectors(): string[] {
 export function getAllExchanges(): string[] {
     return [...new Set(COMPANIES.map(c => c.exchange))];
 }
+
+// ─── Live Data Integration ────────────────────────────────
+import { fetchLiveCompanyData, enrichWithFundamentals, DataSource } from "../services/market-data-service";
+
+export type RefreshStatus = "idle" | "refreshing" | "done" | "error";
+
+export interface CompanyLiveState {
+    data: CompanyData;
+    source: DataSource;
+    lastUpdated: Date | null;
+}
+
+/**
+ * Refresh a single company with live data.
+ * Returns the updated CompanyData and data source info.
+ */
+export async function refreshCompanyLive(ticker: string): Promise<CompanyLiveState> {
+    const fallback = COMPANIES.find(c => c.ticker === ticker) || COMPANIES[0];
+    const result = await fetchLiveCompanyData(ticker, fallback);
+
+    // Update the COMPANIES array in-place for this ticker
+    const idx = COMPANIES.findIndex(c => c.ticker === ticker);
+    if (idx >= 0) {
+        COMPANIES[idx] = result.data;
+    }
+
+    return {
+        data: result.data,
+        source: result.source,
+        lastUpdated: result.lastUpdated,
+    };
+}
+
+/**
+ * Refresh all companies with live data.
+ * Uses staggered requests to respect rate limits.
+ */
+export async function refreshAllLive(
+    onProgress?: (done: number, total: number) => void
+): Promise<Map<string, CompanyLiveState>> {
+    const results = new Map<string, CompanyLiveState>();
+    const total = COMPANIES.length;
+
+    for (let i = 0; i < total; i++) {
+        const c = COMPANIES[i];
+        try {
+            const state = await refreshCompanyLive(c.ticker);
+            results.set(c.ticker, state);
+        } catch {
+            results.set(c.ticker, {
+                data: c,
+                source: "fallback",
+                lastUpdated: null,
+            });
+        }
+        onProgress?.(i + 1, total);
+        // Stagger requests
+        if (i < total - 1) {
+            await new Promise(resolve => setTimeout(resolve, 600));
+        }
+    }
+
+    return results;
+}
+
+/**
+ * Enrich a company with Alpha Vantage fundamentals.
+ * Use sparingly due to 25/day API limit.
+ */
+export async function enrichCompanyFundamentals(ticker: string): Promise<CompanyData> {
+    const current = COMPANIES.find(c => c.ticker === ticker) || COMPANIES[0];
+    const enriched = await enrichWithFundamentals(ticker, current);
+
+    // Update in-place
+    const idx = COMPANIES.findIndex(c => c.ticker === ticker);
+    if (idx >= 0) {
+        COMPANIES[idx] = enriched;
+    }
+
+    return enriched;
+}
+
+/**
+ * Add a custom ticker to the companies list.
+ * Creates a minimal CompanyData with defaults, then fetches live data.
+ */
+export async function addCustomTicker(
+    ticker: string,
+    name = ticker,
+    exchange = "CUSTOM"
+): Promise<CompanyLiveState> {
+    // Check if already exists
+    if (COMPANIES.find(c => c.ticker === ticker)) {
+        return refreshCompanyLive(ticker);
+    }
+
+    // Create minimal seed
+    const seed: CompanyData = {
+        ticker, name, sector: "Unknown", exchange,
+        marketCap: 0, beta: 1.0, sharesOutstanding: 0, currentPrice: 0,
+        dailyReturns: [], annualReturn: 0, annualVolatility: 0.2,
+        totalAssets: 0, totalEquity: 0, totalLiabilities: 0,
+        currentAssets: 0, currentLiabilities: 0, inventory: 0,
+        cashAndEquivalents: 0, longTermDebt: 0, totalReceivables: 0, totalPayables: 0,
+        revenue: 0, costOfGoodsSold: 0, operatingIncome: 0, netIncome: 0,
+        interestExpense: 0, ebitda: 0, taxExpense: 0, dividendsPaid: 0,
+        freeCashFlow: 0, fcfGrowthRates: [0.05, 0.04, 0.03, 0.02, 0.02],
+        debtFaceValue: 0, assetVolatility: 0.12,
+    };
+
+    // Add to list
+    COMPANIES.push(seed);
+
+    // Fetch live data
+    return refreshCompanyLive(ticker);
+}
+
