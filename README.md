@@ -110,6 +110,8 @@ python -m pytest tests/integration
 
 See `DEPLOY.md` for detailed production deployment instructions, including environment configuration, security hardening, and scaling strategies.
 
+For specific instructions on deploying the **Excel Add-in**, see the [Excel Deployment Guide](EXCEL_DEPLOY.md).
+
 ## 📝 License
 
 Proprietary License.
