@@ -23,6 +23,7 @@ import { DataSource, clearAllCache } from "../services/market-data-service";
 
 // Excel
 import { ExcelService } from "../utils/excel";
+import { buildAllModels } from "../utils/excel-models";
 
 // Helper to write to Excel, silently catch if not in Office context
 const writeToExcel = async (fn: () => Promise<void>) => {
@@ -278,6 +279,29 @@ const App: React.FC = () => {
                         <RI label="Revenue" value={`$${selectedCompany.revenue}B`} />
                         <RI label="Net Income" value={`$${selectedCompany.netIncome}B`} cls="positive" />
                     </div>
+                </div>
+            </div>
+            <div className="glass-card">
+                <h3 className="card-title"><span className="icon">📋</span> Build Full Model in Excel</h3>
+                <p className="card-subtitle">Generate complete financial model sheets with cell-linked formulas for the selected company.</p>
+                <button className="btn-primary" disabled={loading} style={{ width: "100%", padding: "12px", fontSize: 14, fontWeight: 700, background: "linear-gradient(135deg, #7c3aed, #6d28d9)", border: "none", borderRadius: 8, color: "#fff", cursor: "pointer", marginBottom: 8 }}
+                    onClick={async () => {
+                        setLoading(true);
+                        clearError();
+                        try {
+                            await buildAllModels(selectedCompany, (step, done, total) => {
+                                setError(`Building ${step}... (${done}/${total})`);
+                            });
+                            setError(`✅ All 7 model sheets built for ${selectedCompany.ticker}!`);
+                            setTimeout(clearError, 4000);
+                        } catch (e) { handleError(e); }
+                        setLoading(false);
+                    }}>
+                    {loading ? "⏳ Building..." : "🏗️ Build All 7 Model Sheets"}
+                </button>
+                <div style={{ fontSize: 10, color: "#8b949e", lineHeight: 1.6 }}>
+                    Creates: <strong>Dashboard</strong> • <strong>Balance Sheet</strong> • <strong>Income Statement</strong> • <strong>DCF Model</strong> • <strong>Financial Ratios</strong> • <strong>WACC Calculator</strong> • <strong>Loan Schedule</strong>
+                    <br />All sheets include cell-linked formulas — edit yellow input cells to see values update automatically.
                 </div>
             </div>
             <div className="glass-card">
