@@ -5,117 +5,550 @@
     <base target="_top">
     <link rel="stylesheet" href="https://ssl.gstatic.com/docs/script/css/add-ons1.css">
     <style>
-        .branding-below {
-            bottom: 56px;
-            top: 0;
+        :root {
+            --primary: #1a237e;
+            --primary-light: #3949ab;
+            --accent: #7c3aed;
+            --bg: #0d1117;
+            --surface: #161b22;
+            --text: #e6edf3;
+            --muted: #8b949e;
+            --border: #30363d;
+            --success: #3fb950;
+            --danger: #f85149;
         }
 
-        .block {
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            margin: 0;
+            padding: 0;
+            font-size: 13px;
+        }
+
+        .sidebar {
+            padding: 12px;
+        }
+
+        h3 {
+            margin: 0 0 4px;
+            font-size: 15px;
+            background: linear-gradient(135deg, var(--primary), var(--accent));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .subtitle {
+            font-size: 11px;
+            color: var(--muted);
+            margin-bottom: 12px;
+        }
+
+        /* Tabs */
+        .tab-nav {
+            display: flex;
+            gap: 2px;
+            margin-bottom: 12px;
+            background: var(--surface);
+            border-radius: 8px;
+            padding: 3px;
+            overflow-x: auto;
+        }
+
+        .tab-btn {
+            flex: 1;
+            padding: 6px 4px;
+            font-size: 10px;
+            font-weight: 600;
+            background: transparent;
+            border: none;
+            color: var(--muted);
+            border-radius: 6px;
+            cursor: pointer;
+            text-align: center;
+            min-width: 44px;
+        }
+
+        .tab-btn.active {
+            background: var(--primary);
+            color: #fff;
+        }
+
+        .tab-panel {
+            display: none;
+        }
+
+        .tab-panel.active {
+            display: block;
+        }
+
+        /* Forms */
+        .form-group {
+            margin-bottom: 8px;
+        }
+
+        .form-label {
+            display: block;
+            font-size: 10px;
+            font-weight: 600;
+            color: var(--muted);
+            margin-bottom: 3px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .form-input,
+        .form-select {
+            width: 100%;
+            box-sizing: border-box;
+            padding: 7px 10px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text);
+            font-size: 12px;
+        }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 6px;
+        }
+
+        /* Buttons */
+        .btn-primary {
+            width: 100%;
+            padding: 8px;
+            background: linear-gradient(135deg, var(--primary), var(--accent));
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            font-weight: 700;
+            font-size: 12px;
+            cursor: pointer;
+            margin-top: 4px;
+        }
+
+        .btn-primary:hover {
+            opacity: 0.9;
+        }
+
+        .btn-primary:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        /* Results */
+        .result-panel {
+            margin-top: 10px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
             padding: 10px;
+        }
+
+        .result-title {
+            font-weight: 700;
+            font-size: 12px;
+            color: var(--accent);
+            margin-bottom: 6px;
+        }
+
+        .result-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 3px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            font-size: 11px;
+        }
+
+        .result-row:last-child {
+            border-bottom: none;
+        }
+
+        .result-label {
+            color: var(--muted);
+        }
+
+        .result-value {
+            font-weight: 600;
+        }
+
+        .positive {
+            color: var(--success);
+        }
+
+        .negative {
+            color: var(--danger);
+        }
+
+        .error {
+            color: var(--danger);
+            padding: 8px;
+            background: rgba(248, 81, 73, 0.1);
+            border-radius: 6px;
+            font-size: 11px;
+            margin-top: 8px;
+            display: none;
+        }
+
+        .info {
+            color: var(--muted);
+            font-size: 10px;
+            margin-top: 6px;
+            padding: 6px;
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 6px;
+            line-height: 1.5;
         }
     </style>
 </head>
 
 <body>
-    <div class="sidebar branding-below">
-        <div class="block">
-            <h3>Value at Risk (VaR)</h3>
-            <p>Select a range of returns in the sheet.</p>
+    <div class="sidebar">
+        <h3>⚡ Risk Modeling Platform</h3>
+        <div class="subtitle">All calculations run locally — no server needed</div>
 
-            <div class="form-group">
-                <label for="portfolioValue">Portfolio Value</label>
-                <input type="number" id="portfolioValue" value="1000000" style="width: 100%;">
+        <div class="tab-nav">
+            <button class="tab-btn active" onclick="switchTab('var')">📉 VaR</button>
+            <button class="tab-btn" onclick="switchTab('credit')">🏛️ Credit</button>
+            <button class="tab-btn" onclick="switchTab('mc')">🎲 MC</button>
+            <button class="tab-btn" onclick="switchTab('dcf')">🏦 DCF</button>
+            <button class="tab-btn" onclick="switchTab('bond')">📜 Bond</button>
+        </div>
+
+        <!-- ═══ VaR Tab ═══ -->
+        <div id="tab-var" class="tab-panel active">
+            <div class="info">Select a column of daily returns in the sheet, then click Calculate.</div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">Portfolio Value ($)</label>
+                    <input class="form-input" type="number" id="var-pv" value="1000000">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Confidence</label>
+                    <input class="form-input" type="number" id="var-cl" value="0.95" step="0.01">
+                </div>
             </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">Horizon (days)</label>
+                    <input class="form-input" type="number" id="var-horizon" value="1">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Method</label>
+                    <select class="form-select" id="var-method">
+                        <option value="historical">Historical</option>
+                        <option value="parametric">Parametric</option>
+                        <option value="monte_carlo">Monte Carlo</option>
+                    </select>
+                </div>
+            </div>
+            <button class="btn-primary" onclick="runVaR()">📉 Calculate VaR</button>
+            <div id="var-results"></div>
+        </div>
 
+        <!-- ═══ Credit Tab ═══ -->
+        <div id="tab-credit" class="tab-panel">
+            <div class="info">Merton structural model — probability of default &amp; distance to default.</div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">Asset Value</label>
+                    <input class="form-input" type="number" id="cr-asset" value="500">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Debt Face Value</label>
+                    <input class="form-input" type="number" id="cr-debt" value="200">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">Volatility (σ)</label>
+                    <input class="form-input" type="number" id="cr-vol" value="0.3" step="0.01">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Risk-Free Rate</label>
+                    <input class="form-input" type="number" id="cr-rf" value="0.05" step="0.01">
+                </div>
+            </div>
             <div class="form-group">
-                <label for="method">Method</label>
-                <select id="method" style="width: 100%;">
-                    <option value="historical">Historical</option>
-                    <option value="parametric">Parametric</option>
-                    <option value="monte_carlo">Monte Carlo</option>
+                <label class="form-label">Maturity (years)</label>
+                <input class="form-input" type="number" id="cr-mat" value="1">
+            </div>
+            <button class="btn-primary" onclick="runCredit()">🏛️ Calculate Credit Risk</button>
+            <div id="credit-results"></div>
+        </div>
+
+        <!-- ═══ Monte Carlo Tab ═══ -->
+        <div id="tab-mc" class="tab-panel">
+            <div class="info">Run probabilistic simulations with normal distribution.</div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">Simulations</label>
+                    <input class="form-input" type="number" id="mc-n" value="10000">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Mean</label>
+                    <input class="form-input" type="number" id="mc-mean" value="100">
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Std Dev</label>
+                <input class="form-input" type="number" id="mc-std" value="15">
+            </div>
+            <button class="btn-primary" onclick="runMC()">🎲 Run Simulation</button>
+            <div id="mc-results"></div>
+        </div>
+
+        <!-- ═══ DCF Tab ═══ -->
+        <div id="tab-dcf" class="tab-panel">
+            <div class="info">Discounted Cash Flow intrinsic valuation.</div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">Current FCF ($B)</label>
+                    <input class="form-input" type="number" id="dcf-fcf" value="100">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">WACC</label>
+                    <input class="form-input" type="number" id="dcf-wacc" value="0.10" step="0.01">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">Terminal Growth</label>
+                    <input class="form-input" type="number" id="dcf-tgr" value="0.03" step="0.01">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Net Debt ($B)</label>
+                    <input class="form-input" type="number" id="dcf-debt" value="50">
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Shares Outstanding (M)</label>
+                <input class="form-input" type="number" id="dcf-shares" value="5000">
+            </div>
+            <button class="btn-primary" onclick="runDCF()">🏦 Run DCF Valuation</button>
+            <div id="dcf-results"></div>
+        </div>
+
+        <!-- ═══ Bond Tab ═══ -->
+        <div id="tab-bond" class="tab-panel">
+            <div class="info">Bond pricing — price, yield, duration, convexity.</div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">Face Value ($)</label>
+                    <input class="form-input" type="number" id="bond-face" value="1000">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Coupon Rate</label>
+                    <input class="form-input" type="number" id="bond-coupon" value="0.06" step="0.01">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">Years</label>
+                    <input class="form-input" type="number" id="bond-years" value="10">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Market Rate</label>
+                    <input class="form-input" type="number" id="bond-rate" value="0.05" step="0.01">
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Frequency</label>
+                <select class="form-select" id="bond-freq">
+                    <option value="1">Annual</option>
+                    <option value="2" selected>Semi-Annual</option>
+                    <option value="4">Quarterly</option>
                 </select>
             </div>
-
-            <button class="action" id="calculate-btn">Calculate VaR</button>
+            <button class="btn-primary" onclick="runBond()">📜 Calculate Bond</button>
+            <div id="bond-results"></div>
         </div>
 
-        <div class="block" id="results" style="display:none;">
-            <h4>Results</h4>
-            <div id="result-content"></div>
-        </div>
-
-        <div class="block error" id="error" style="display:none; color: red;"></div>
+        <div class="error" id="error"></div>
     </div>
 
     <script>
-        document.getElementById('calculate-btn').addEventListener('click', runCalculation);
+        // ═══ Tab switching ═══
+        function switchTab(tab) {
+            document.querySelectorAll('.tab-panel').forEach(function (p) { p.classList.remove('active'); });
+            document.querySelectorAll('.tab-btn').forEach(function (b) { b.classList.remove('active'); });
+            document.getElementById('tab-' + tab).classList.add('active');
+            event.target.classList.add('active');
+            hideError();
+        }
 
-        function runCalculation() {
-            var btn = document.getElementById('calculate-btn');
-            var errorDiv = document.getElementById('error');
-            var resultsDiv = document.getElementById('results');
+        function showError(msg) { var el = document.getElementById('error'); el.textContent = '⚠️ ' + msg; el.style.display = 'block'; }
+        function hideError() { document.getElementById('error').style.display = 'none'; }
 
-            btn.disabled = true;
-            btn.textContent = 'Calculating...';
-            errorDiv.style.display = 'none';
-            resultsDiv.style.display = 'none';
+        function resultHTML(title, rows) {
+            var html = '<div class="result-panel"><div class="result-title">' + title + '</div>';
+            for (var i = 0; i < rows.length; i++) {
+                var cls = rows[i][2] || '';
+                html += '<div class="result-row"><span class="result-label">' + rows[i][0] + '</span><span class="result-value ' + cls + '">' + rows[i][1] + '</span></div>';
+            }
+            return html + '</div>';
+        }
 
-            // 1. Get selected data from sheet
+        function disableBtn(btn) { btn.disabled = true; var orig = btn.textContent; btn.textContent = '⏳ Calculating...'; return orig; }
+        function enableBtn(btn, text) { btn.disabled = false; btn.textContent = text; }
+
+        // ═══ VaR ═══
+        function runVaR() {
+            hideError();
+            var btn = event.target;
+            var origText = disableBtn(btn);
+
             google.script.run
                 .withSuccessHandler(function (returns) {
-                    if (returns.length < 10) {
-                        showError('Please select at least 10 return values.');
-                        btn.disabled = false;
-                        btn.textContent = 'Calculate VaR';
-                        return;
-                    }
+                    if (returns.length < 10) { showError('Select at least 10 return values.'); enableBtn(btn, origText); return; }
 
-                    // 2. Prepare params
                     var params = {
-                        portfolio_value: parseFloat(document.getElementById('portfolioValue').value),
-                        confidence_level: 0.95,
-                        time_horizon: 1,
-                        method: document.getElementById('method').value,
-                        returns: returns
+                        returns: returns,
+                        portfolio_value: parseFloat(document.getElementById('var-pv').value),
+                        confidence_level: parseFloat(document.getElementById('var-cl').value),
+                        time_horizon: parseInt(document.getElementById('var-horizon').value),
+                        method: document.getElementById('var-method').value
                     };
 
-                    // 3. Call backend API (via server-side script)
                     google.script.run
-                        .withSuccessHandler(function (result) {
-                            showResults(result);
-                            btn.disabled = false;
-                            btn.textContent = 'Calculate VaR';
+                        .withSuccessHandler(function (r) {
+                            document.getElementById('var-results').innerHTML = resultHTML('📊 ' + r.var_method + ' VaR — ' + r.confidence_level, [
+                                ['VaR ($)', '$' + r.var_absolute.toLocaleString(), 'negative'],
+                                ['VaR (%)', r.var_percentage + '%', ''],
+                                ['CVaR ($)', '$' + r.expected_shortfall.toLocaleString(), 'negative'],
+                                ['Daily Vol', r.daily_vol_pct + '%', ''],
+                                ['Annual Vol', r.annual_vol_pct + '%', ''],
+                                ['Data Points', r.data_points_used, ''],
+                            ]);
+                            enableBtn(btn, origText);
                         })
-                        .withFailureHandler(function (err) {
-                            showError(err.message);
-                            btn.disabled = false;
-                            btn.textContent = 'Calculate VaR';
-                        })
+                        .withFailureHandler(function (err) { showError(err.message); enableBtn(btn, origText); })
                         .calculateVaR(params);
-
                 })
-                .withFailureHandler(function (err) {
-                    showError('Failed to get selection: ' + err.message);
-                    btn.disabled = false;
-                    btn.textContent = 'Calculate VaR';
-                })
+                .withFailureHandler(function (err) { showError('Select a range of returns first: ' + err.message); enableBtn(btn, origText); })
                 .getSelectedData();
         }
 
-        function showResults(data) {
-            var div = document.getElementById('result-content');
-            div.innerHTML = `
-          <p><strong>VaR:</strong> $${data.var_absolute.toLocaleString()}</p>
-          <p><strong>VaR %:</strong> ${data.var_percentage}%</p>
-          <p><strong>Method:</strong> ${data.var_method}</p>
-        `;
-            document.getElementById('results').style.display = 'block';
+        // ═══ Credit Risk ═══
+        function runCredit() {
+            hideError();
+            var btn = event.target;
+            var origText = disableBtn(btn);
+
+            var params = {
+                asset_value: parseFloat(document.getElementById('cr-asset').value),
+                debt_face_value: parseFloat(document.getElementById('cr-debt').value),
+                risk_free_rate: parseFloat(document.getElementById('cr-rf').value),
+                volatility: parseFloat(document.getElementById('cr-vol').value),
+                time_to_maturity: parseFloat(document.getElementById('cr-mat').value)
+            };
+
+            google.script.run
+                .withSuccessHandler(function (r) {
+                    var pdPct = (r.probability_of_default * 100).toFixed(4) + '%';
+                    document.getElementById('credit-results').innerHTML = resultHTML('📊 Merton Model', [
+                        ['Default Probability', pdPct, r.probability_of_default > 0.05 ? 'negative' : 'positive'],
+                        ['Distance to Default', r.distance_to_default, ''],
+                        ['Equity Value', '$' + r.equity_value, 'positive'],
+                        ['Debt Value', '$' + r.debt_value, ''],
+                        ['Credit Spread', r.credit_spread_bps + ' bps', ''],
+                        ['d1 / d2', r.d1 + ' / ' + r.d2, ''],
+                    ]);
+                    enableBtn(btn, origText);
+                })
+                .withFailureHandler(function (err) { showError(err.message); enableBtn(btn, origText); })
+                .calculateMerton(params);
         }
 
-        function showError(msg) {
-            var div = document.getElementById('error');
-            div.textContent = msg;
-            div.style.display = 'block';
+        // ═══ Monte Carlo ═══
+        function runMC() {
+            hideError();
+            var btn = event.target;
+            var origText = disableBtn(btn);
+
+            var params = {
+                num_simulations: parseInt(document.getElementById('mc-n').value),
+                mean: parseFloat(document.getElementById('mc-mean').value),
+                std_dev: parseFloat(document.getElementById('mc-std').value)
+            };
+
+            google.script.run
+                .withSuccessHandler(function (r) {
+                    document.getElementById('mc-results').innerHTML = resultHTML('📊 MC Simulation — ' + r.num_simulations + ' runs', [
+                        ['Mean', r.mean, ''],
+                        ['Std Dev', r.std_dev, ''],
+                        ['Median', r.median, ''],
+                        ['Min / Max', r.min + ' / ' + r.max, ''],
+                        ['P5 / P95', r.percentile_5 + ' / ' + r.percentile_95, ''],
+                        ['P(Negative)', r.prob_negative + '%', r.prob_negative > 50 ? 'negative' : 'positive'],
+                    ]);
+                    enableBtn(btn, origText);
+                })
+                .withFailureHandler(function (err) { showError(err.message); enableBtn(btn, origText); })
+                .runMonteCarlo(params);
+        }
+
+        // ═══ DCF ═══
+        function runDCF() {
+            hideError();
+            var btn = event.target;
+            var origText = disableBtn(btn);
+
+            var params = {
+                current_fcf: parseFloat(document.getElementById('dcf-fcf').value),
+                wacc: parseFloat(document.getElementById('dcf-wacc').value),
+                terminal_growth: parseFloat(document.getElementById('dcf-tgr').value),
+                net_debt: parseFloat(document.getElementById('dcf-debt').value),
+                shares_outstanding: parseFloat(document.getElementById('dcf-shares').value)
+            };
+
+            google.script.run
+                .withSuccessHandler(function (r) {
+                    document.getElementById('dcf-results').innerHTML = resultHTML('📊 DCF Valuation', [
+                        ['Enterprise Value', '$' + r.enterprise_value + 'B', ''],
+                        ['Equity Value', '$' + r.equity_value + 'B', 'positive'],
+                        ['Share Price', '$' + r.implied_share_price, 'positive'],
+                        ['PV of FCFs', '$' + r.sum_pv_fcfs + 'B', ''],
+                        ['Terminal Value', '$' + r.terminal_value + 'B', ''],
+                        ['PV Terminal', '$' + r.pv_terminal + 'B', ''],
+                    ]);
+                    enableBtn(btn, origText);
+                })
+                .withFailureHandler(function (err) { showError(err.message); enableBtn(btn, origText); })
+                .calculateDCF(params);
+        }
+
+        // ═══ Bond ═══
+        function runBond() {
+            hideError();
+            var btn = event.target;
+            var origText = disableBtn(btn);
+
+            var params = {
+                face_value: parseFloat(document.getElementById('bond-face').value),
+                coupon_rate: parseFloat(document.getElementById('bond-coupon').value),
+                years: parseInt(document.getElementById('bond-years').value),
+                market_rate: parseFloat(document.getElementById('bond-rate').value),
+                frequency: parseInt(document.getElementById('bond-freq').value)
+            };
+
+            google.script.run
+                .withSuccessHandler(function (r) {
+                    document.getElementById('bond-results').innerHTML = resultHTML('📊 Bond Analysis — ' + r.premium_discount, [
+                        ['Bond Price', '$' + r.bond_price, ''],
+                        ['YTM', (r.ytm * 100).toFixed(2) + '%', ''],
+                        ['Current Yield', (r.current_yield * 100).toFixed(2) + '%', ''],
+                        ['Macaulay Duration', r.macaulay_duration + ' yrs', ''],
+                        ['Modified Duration', r.modified_duration, ''],
+                        ['Status', r.premium_discount, r.premium_discount === 'Premium' ? 'positive' : 'negative'],
+                    ]);
+                    enableBtn(btn, origText);
+                })
+                .withFailureHandler(function (err) { showError(err.message); enableBtn(btn, origText); })
+                .calculateBond(params);
         }
     </script>
 </body>
