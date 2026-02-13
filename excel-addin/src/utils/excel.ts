@@ -95,7 +95,7 @@ export const ExcelService = {
             // ── Title ──
             const titleRange = sheet.getRangeByIndexes(row, 0, 1, 6);
             titleRange.merge();
-            titleRange.values = [[title]];
+            titleRange.values = [[title.replace(/[\u{1F300}-\u{1FAFF}]/gu, "").trim()]];
             titleRange.format.font.size = 16;
             titleRange.format.font.bold = true;
             titleRange.format.font.color = ACCENT_FG;
@@ -126,12 +126,15 @@ export const ExcelService = {
             // Spacer
             row++;
 
+            // Sync title block
+            await context.sync();
+
             // ── Sections (label-value pairs) ──
             for (const section of sections) {
                 // Section heading
                 const headRange = sheet.getRangeByIndexes(row, 0, 1, 2);
                 headRange.merge();
-                headRange.values = [[section.heading]];
+                headRange.values = [[section.heading.replace(/[\u{1F300}-\u{1FAFF}]/gu, "").trim()]];
                 headRange.format.font.bold = true;
                 headRange.format.font.size = 12;
                 headRange.format.font.color = HEADER_FG;
@@ -169,13 +172,16 @@ export const ExcelService = {
                     row++;
                 }
                 row++; // spacer between sections
+
+                // Sync after each section so partial data persists
+                await context.sync();
             }
 
             // ── Linked Cells (formulas) ──
             if (linkedCells && linkedCells.length > 0) {
                 const lcHeadRange = sheet.getRangeByIndexes(row, 0, 1, 2);
                 lcHeadRange.merge();
-                lcHeadRange.values = [["📎 Linked Calculations"]];
+                lcHeadRange.values = [["Linked Calculations"]];
                 lcHeadRange.format.font.bold = true;
                 lcHeadRange.format.font.size = 12;
                 lcHeadRange.format.font.color = HEADER_FG;
@@ -198,6 +204,8 @@ export const ExcelService = {
                     row++;
                 }
                 row++;
+
+                await context.sync();
             }
 
             // ── Data Table ──
@@ -235,15 +243,17 @@ export const ExcelService = {
                     row++;
                 }
                 row++;
+
+                await context.sync();
             }
 
             // ── Auto-fit columns ──
-            const fullRange = sheet.getRangeByIndexes(0, 0, row, 6);
-            fullRange.format.autofitColumns();
-
-            // Set column widths
-            sheet.getRangeByIndexes(0, 0, 1, 1).format.columnWidth = 200;
-            sheet.getRangeByIndexes(0, 1, 1, 1).format.columnWidth = 160;
+            try {
+                const fullRange = sheet.getRangeByIndexes(0, 0, Math.max(row, 1), 6);
+                fullRange.format.autofitColumns();
+                sheet.getRangeByIndexes(0, 0, 1, 1).format.columnWidth = 200;
+                sheet.getRangeByIndexes(0, 1, 1, 1).format.columnWidth = 160;
+            } catch { /* autofit may fail on empty sheets */ }
 
             await context.sync();
 

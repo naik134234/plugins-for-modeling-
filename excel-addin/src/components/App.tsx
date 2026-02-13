@@ -26,9 +26,19 @@ import { ExcelService } from "../utils/excel";
 import { buildAllModels } from "../utils/excel-models";
 import ModelPreview from "./ModelPreview";
 
-// Helper to write to Excel, silently catch if not in Office context
 const writeToExcel = async (fn: () => Promise<void>) => {
-    try { await fn(); } catch (e) { console.log("Excel write skipped (not in Office):", e); }
+    try {
+        await fn();
+    } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        // Only suppress if Office/Excel is genuinely unavailable
+        if (msg.includes("Excel") || msg.includes("Office") || msg.includes("not defined") || msg.includes("is not a function")) {
+            console.warn("Excel write skipped (not in Office context):", msg);
+        } else {
+            console.error("Excel write error:", e);
+            throw e; // re-throw real errors so the UI can show them
+        }
+    }
 };
 
 // ──────── Types ──────── 
