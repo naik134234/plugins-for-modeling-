@@ -24,6 +24,7 @@ import { DataSource, clearAllCache } from "../services/market-data-service";
 // Excel
 import { ExcelService } from "../utils/excel";
 import { buildAllModels } from "../utils/excel-models";
+import ModelPreview from "./ModelPreview";
 
 // Helper to write to Excel, silently catch if not in Office context
 const writeToExcel = async (fn: () => Promise<void>) => {
@@ -67,6 +68,7 @@ const App: React.FC = () => {
     const [searchQuery, setSearchQuery] = useState("");
     const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
     const [showSearch, setShowSearch] = useState(false);
+    const [showModelPreview, setShowModelPreview] = useState(false);
     const [, forceUpdate] = useState(0);
 
     useEffect(() => {
@@ -288,13 +290,20 @@ const App: React.FC = () => {
                     onClick={async () => {
                         setLoading(true);
                         clearError();
+                        setShowModelPreview(true);
                         try {
-                            await buildAllModels(selectedCompany, (step, done, total) => {
-                                setError(`Building ${step}... (${done}/${total})`);
+                            await writeToExcel(async () => {
+                                await buildAllModels(selectedCompany, (step, done, total) => {
+                                    setError(`Building ${step}... (${done}/${total})`);
+                                });
                             });
                             setError(`✅ All 7 model sheets built for ${selectedCompany.ticker}!`);
                             setTimeout(clearError, 4000);
-                        } catch (e) { handleError(e); }
+                        } catch (e) {
+                            console.log("Excel build skipped (not in Office):", e);
+                            setError(`📋 Preview shown below (Excel write skipped — open in Excel to populate sheets)`);
+                            setTimeout(clearError, 5000);
+                        }
                         setLoading(false);
                     }}>
                     {loading ? "⏳ Building..." : "🏗️ Build All 7 Model Sheets"}
@@ -303,6 +312,7 @@ const App: React.FC = () => {
                     Creates: <strong>Dashboard</strong> • <strong>Balance Sheet</strong> • <strong>Income Statement</strong> • <strong>DCF Model</strong> • <strong>Financial Ratios</strong> • <strong>WACC Calculator</strong> • <strong>Loan Schedule</strong>
                     <br />All sheets include cell-linked formulas — edit yellow input cells to see values update automatically.
                 </div>
+                {showModelPreview && <ModelPreview co={selectedCompany} />}
             </div>
             <div className="glass-card">
                 <h3 className="card-title"><span className="icon">🔧</span> Modeling Modules</h3>

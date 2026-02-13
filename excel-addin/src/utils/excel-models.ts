@@ -58,12 +58,14 @@ function setCell(sheet: Excel.Worksheet, row: number, col: number, value: string
     formula?: string; wrap?: boolean; width?: number;
 }) {
     const range = sheet.getRangeByIndexes(row, col, 1, opts?.merge || 1);
+    // CRITICAL: merge FIRST so range becomes 1×1 for data assignments
+    // (setting values/formulas on a multi-column range with a 1×1 array causes Office.js errors)
+    if (opts?.merge && opts.merge > 1) range.merge();
     if (opts?.formula) {
         range.formulas = [[opts.formula]];
     } else {
         range.values = [[value]];
     }
-    if (opts?.merge && opts.merge > 1) range.merge();
     if (opts?.bold) range.format.font.bold = true;
     if (opts?.size) range.format.font.size = opts.size;
     if (opts?.color) range.format.font.color = opts.color;
